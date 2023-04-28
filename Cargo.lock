@@ -1037,6 +1037,7 @@ dependencies = [
  "colorous",
  "eframe",
  "egui",
+ "rand",
 ]
 
 [[package]]
