@@ -1,0 +1,1 @@
+A collection of puzzles inspired by https://jsmeansjauhesammutin.github.io/newerpuzzlegame
