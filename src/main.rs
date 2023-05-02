@@ -12,6 +12,7 @@ fn main() -> eframe::Result<()> {
 
 struct App {
     board: Board,
+    undo_stack: MoveStack,
 }
 
 impl App {
@@ -22,6 +23,7 @@ impl App {
         // for e.g. egui::PaintCallback.
         Self {
             board: Board::new(4, 3),
+            undo_stack: MoveStack::new(),
         }
     }
 }
@@ -58,8 +60,29 @@ impl Board {
         }
     }
 
-    fn press(&mut self, x: usize, y: usize) {
+    fn press(&mut self, m: (usize, usize)) {
+        let (x, y) = m;
         let val = self.pieces[y][x].state;
+        self.pieces[y][x].change(val);
+        if y < self.size - 1 {
+            self.pieces[y + 1][x].change(val);
+        };
+        if y > 0 {
+            self.pieces[y - 1][x].change(val);
+        };
+        if x < self.size - 1 {
+            self.pieces[y][x + 1].change(val);
+        };
+        if x > 0 {
+            self.pieces[y][x - 1].change(val);
+        };
+    }
+
+    fn inv_press(&mut self, m: (usize, usize)) {
+        let (x, y) = m;
+        let val = self.pieces[y][x].state;
+        let val =
+            self.pieces[y][x].lim - (val * (self.pieces[y][x].lim + 1) / 2) % self.pieces[y][x].lim; // TODO: verify inverse respects individual piece limits
         self.pieces[y][x].change(val);
         if y < self.size - 1 {
             self.pieces[y + 1][x].change(val);
@@ -78,23 +101,128 @@ impl Board {
     fn random_move(&mut self, rng: &mut ThreadRng) {
         let x = (rng.gen::<f32>() * self.size as f32).floor() as usize;
         let y = (rng.gen::<f32>() * self.size as f32).floor() as usize;
-        self.press(x, y);
+        self.press((x, y));
+    }
+
+    fn reset(&mut self) {
+        for row in &mut self.pieces {
+            for piece in row {
+                piece.state = 1;
+            }
+        }
+    }
+}
+
+struct MoveStack {
+    stack: Vec<(usize, usize)>,
+    index: usize,
+}
+impl MoveStack {
+    fn new() -> Self {
+        Self {
+            stack: vec![],
+            index: 0,
+        }
+    }
+
+    fn push(&mut self, m: (usize, usize)) {
+        if self.index != 0 {
+            self.stack = self.stack[..self.stack.len() - self.index].to_vec();
+            self.index = 0;
+        }
+        self.stack.push(m);
+    }
+
+    fn undo(&mut self) -> Option<(usize, usize)> {
+        if self.index < self.stack.len() {
+            self.index += 1;
+            return Some(self.stack[self.stack.len() - self.index]);
+        }
+        return None;
+    }
+
+    fn redo(&mut self) -> Option<(usize, usize)> {
+        if self.index > 0 {
+            self.index -= 1;
+            return Some(self.stack[self.stack.len() - self.index - 1]);
+        }
+        return None;
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let spectrum = colorous::RED_YELLOW_GREEN;
+
+        let scramble_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F);
+        let scramble = |board: &mut Board| {
+            let mut rng = thread_rng();
+            for _ in 0..100 {
+                board.random_move(&mut rng);
+            }
+        };
+        if ctx.input_mut(|input| input.consume_shortcut(&scramble_shortcut)) {
+            scramble(&mut self.board);
+        }
+
+        let reset_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::R);
+        let reset = |board: &mut Board| board.reset();
+        if ctx.input_mut(|input| input.consume_shortcut(&reset_shortcut)) {
+            reset(&mut self.board);
+        }
+
+        let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Z);
+        let undo = |board: &mut Board, stack: &mut MoveStack| {
+            if let Some(m) = stack.undo() {
+                board.inv_press(m);
+            }
+        };
+        if ctx.input_mut(|input| input.consume_shortcut(&undo_shortcut)) {
+            undo(&mut self.board, &mut self.undo_stack);
+        }
+
+        let redo_shortcut = egui::KeyboardShortcut::new(
+            egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
+            egui::Key::Z,
+        );
+        let redo = |board: &mut Board, stack: &mut MoveStack| {
+            if let Some(m) = stack.redo() {
+                board.press(m);
+            }
+        };
+        if ctx.input_mut(|input| input.consume_shortcut(&redo_shortcut)) {
+            redo(&mut self.board, &mut self.undo_stack);
+        }
+
         egui::TopBottomPanel::top("Top").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                ui.menu_button("Puzzle", |ui| {
-                    if ui.button("Scramble").clicked() {
-                        let mut rng = thread_rng();
-                        for _ in 0..100 {
-                            self.board.random_move(&mut rng);
-                        }
+                ui.menu_button("Edit", |ui| {
+                    let scramble_button = egui::Button::new("Scramble")
+                        .shortcut_text(ctx.format_shortcut(&scramble_shortcut));
+                    if ui.add(scramble_button).clicked() {
+                        scramble(&mut self.board);
                     }
-                    for n in 3..=6 {
+
+                    let reset_button = egui::Button::new("Reset")
+                        .shortcut_text(ctx.format_shortcut(&reset_shortcut));
+                    if ui.add(reset_button).clicked() {
+                        reset(&mut self.board);
+                    }
+
+                    let undo_button = egui::Button::new("Undo")
+                        .shortcut_text(ctx.format_shortcut(&undo_shortcut));
+                    if ui.add(undo_button).clicked() {
+                        undo(&mut self.board, &mut self.undo_stack);
+                    }
+
+                    let redo_button = egui::Button::new("Redo")
+                        .shortcut_text(ctx.format_shortcut(&redo_shortcut));
+                    if ui.add(redo_button).clicked() {
+                        redo(&mut self.board, &mut self.undo_stack);
+                    }
+                });
+                ui.menu_button("Puzzle", |ui| {
+                    for n in 2..=6 {
                         for l in 1..=3 {
                             let n_str = n.to_string();
                             let lim = 2 * l + 1;
@@ -107,9 +235,6 @@ impl eframe::App for App {
                             }
                         }
                     }
-                    if ui.button("3x3,3").clicked() {
-                        self.board = Board::new(3, 3);
-                    }
                 });
             })
         });
@@ -117,16 +242,20 @@ impl eframe::App for App {
             let rect = ui.available_rect_before_wrap();
             let (min, size) = (rect.left_top(), rect.size());
             let unit = size / self.board.size as f32;
+
+            // Handling mouse input
             if ui.input(|input| input.pointer.primary_pressed()) {
                 if ui.ui_contains_pointer() {
                     if let Some(mpos) = ctx.pointer_latest_pos() {
                         let pos = ((mpos - min) / unit).to_pos2();
-                        self.board
-                            .press(pos.x.trunc() as usize, pos.y.trunc() as usize);
+                        let pos = (pos.x.trunc() as usize, pos.y.trunc() as usize);
+                        self.undo_stack.push(pos);
+                        self.board.press(pos);
                     }
                 }
             }
 
+            // Drawing the board
             for (j, row) in self.board.pieces.iter().enumerate() {
                 for (i, piece) in row.iter().enumerate() {
                     let col: egui::Color32;
