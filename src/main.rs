@@ -14,6 +14,7 @@ fn main() -> eframe::Result<()> {
 
 struct App {
     board: Board,
+    show_numbers: bool,
 }
 
 impl App {
@@ -24,6 +25,7 @@ impl App {
         // for e.g. egui::PaintCallback.
         Self {
             board: Board::new(4, 3),
+            show_numbers: false,
         }
     }
 }
@@ -208,6 +210,7 @@ impl eframe::App for App {
 
         let scramble_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F);
         let scramble = |board: &mut Board| {
+            board.reset();
             let mut rng = thread_rng();
             for _ in 0..100 {
                 board.random_move(&mut rng);
@@ -242,6 +245,14 @@ impl eframe::App for App {
         };
         if ctx.input_mut(|input| input.consume_shortcut(&redo_shortcut)) {
             redo(&mut self.board);
+        }
+
+        let toggle_num_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::N);
+        let toggle_num = |app: &mut App| {
+            app.show_numbers = !app.show_numbers;
+        };
+        if ctx.input_mut(|input| input.consume_shortcut(&toggle_num_shortcut)) {
+            toggle_num(self);
         }
 
         egui::TopBottomPanel::top("Top").show(ctx, |ui| {
@@ -291,12 +302,20 @@ impl eframe::App for App {
                         }
                     }
                 });
+                ui.menu_button("Options", |ui| {
+                    let toggle_num_button = egui::Button::new("Toggle numbers")
+                        .shortcut_text(ctx.format_shortcut(&toggle_num_shortcut));
+                    if ui.add(toggle_num_button).clicked() {
+                        toggle_num(self);
+                    }
+                })
             })
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             let rect = ui.available_rect_before_wrap();
             let (min, size) = (rect.left_top(), rect.size());
             let unit = size / self.board.size as f32;
+            let font_size = (32. as f32).min(unit.y / ctx.pixels_per_point() * 2. / 3.);
 
             // Handling mouse input
             if ui.input(|input| input.pointer.primary_pressed()) {
@@ -326,7 +345,7 @@ impl eframe::App for App {
                         col = egui::Color32::WHITE;
                     } else {
                         let scol = spectrum.eval_rational(
-                            (piece.lim - 3 + piece.state) % (piece.lim - 1),
+                            (piece.lim - piece.state - 1) % (piece.lim - 1),
                             piece.lim - 1,
                         );
                         col = egui::Color32::from_rgb(scol.r, scol.g, scol.b);
@@ -339,7 +358,20 @@ impl eframe::App for App {
                         egui::Rounding::none(),
                         col,
                         (5.0, egui::Color32::DARK_GRAY),
-                    )
+                    );
+                    if self.show_numbers {
+                        ui.put(
+                            egui::Rect::from_min_size(
+                                min + egui::vec2(i as f32 * unit.x, j as f32 * unit.y),
+                                unit,
+                            ),
+                            egui::Label::new(
+                                egui::RichText::new(piece.state.to_string())
+                                    .color(egui::Color32::DARK_GRAY)
+                                    .size(font_size),
+                            ),
+                        );
+                    }
                 }
             }
         });
