@@ -6,7 +6,7 @@ use rand::prelude::*;
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "Window Title",
+        "Green the Board",
         native_options,
         Box::new(|cc| Box::new(App::new(cc))),
     )
@@ -206,7 +206,10 @@ impl MoveStack {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        let spectrum = colorous::RED_YELLOW_GREEN;
+        let spectrum = |t: f64| {
+            let col = colorous::RAINBOW.eval_continuous(0.57 * (1. - t) + 0.32 * t);
+            egui::Color32::from_rgb(col.r, col.g, col.b)
+        };
 
         let scramble_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F);
         let scramble = |board: &mut Board| {
@@ -340,16 +343,11 @@ impl eframe::App for App {
             // Drawing the board
             for (j, row) in self.board.pieces.iter().enumerate() {
                 for (i, piece) in row.iter().enumerate() {
-                    let col: egui::Color32;
-                    if piece.state == 0 {
-                        col = egui::Color32::WHITE;
+                    let col = if piece.state == 0 {
+                        egui::Color32::WHITE
                     } else {
-                        let scol = spectrum.eval_rational(
-                            (piece.lim - piece.state - 1) % (piece.lim - 1),
-                            piece.lim - 1,
-                        );
-                        col = egui::Color32::from_rgb(scol.r, scol.g, scol.b);
-                    }
+                        spectrum((piece.state - 1) as f64 / (piece.lim - 2) as f64)
+                    };
                     ui.painter().rect(
                         egui::Rect::from_min_size(
                             min + egui::vec2(i as f32 * unit.x, j as f32 * unit.y),
