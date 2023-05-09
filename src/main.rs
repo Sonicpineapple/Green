@@ -315,7 +315,7 @@ impl eframe::App for App {
             let rect = ui.available_rect_before_wrap();
             let (min, size) = (rect.left_top(), rect.size());
             let unit = size / self.board.size as f32;
-            let font_size = (32. as f32).min(unit.y / ctx.pixels_per_point() * 2. / 3.);
+            let font_size = (32. as f32).min(unit.y * 2. / 3.);
 
             // Handling mouse input
             if ui.input(|input| input.pointer.primary_pressed()) {
