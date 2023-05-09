@@ -1,0 +1,102 @@
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  windows:
+    name: Build Windows latest
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            components: clippy
+            override: true
+      - name: Build Green the Board
+        run: cargo build --release
+      - name: Upload executable
+        uses: actions/upload-artifact@v2
+        with:
+          name: green_the_board_win64
+          path: target/release/green.exe
+
+  linux:
+    name: Build Linux latest
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            components: clippy
+            override: true
+      - name: Update apt
+        run: sudo apt update
+      - name: Install egui dependencies
+        run: sudo apt install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
+      - name: Build Green the Board
+        run: cargo build --release
+      - name: Make tarball
+        run: tar -czf green_the_board_linux.tar.gz target/release/green
+      - name: Upload executable
+        uses: actions/upload-artifact@v2
+        with:
+          name: green_the_board_linux
+          path: green_the_board_linux.tar.gz
+
+  macos:
+    name: Build macOS latest
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            components: clippy
+            override: true
+      - name: Install cargo-bundle
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-bundle
+          version: latest
+          use-tool-cache: true
+      - name: Build Green the Board
+        run: cargo build --release
+      - name: Make app
+        run: cargo bundle --release
+      - name: Make tarball
+        run: tar -czf green_the_board_macos.tar.gz target/release/bundle/osx/green.app
+      - name: Upload app
+        uses: actions/upload-artifact@v2
+        with:
+          name: green_the_board_macos
+          path: green_the_board_macos.tar.gz
