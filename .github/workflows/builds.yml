@@ -94,7 +94,7 @@ jobs:
       - name: Make app
         run: cargo bundle --release
       - name: Make tarball
-        run: tar -czf green_the_board_macos.tar.gz target/release/bundle/osx/green.app
+        run: tar -czf green_the_board_macos.tar.gz "target/release/bundle/osx/Green the Board.app"
       - name: Upload app
         uses: actions/upload-artifact@v2
         with:

@@ -2,6 +2,7 @@
 name = "green"
 version = "0.1.0"
 edition = "2021"
+description = "Lights-out-esque puzzle using modular arithmetic"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,3 +11,9 @@ colorous = "1.0.10"
 eframe = "0.21.3"
 egui = "0.21.0"
 rand = "0.8.5"
+
+[package.metadata.bundle]
+name = "Green the Board"
+identifier = "io.github.sonicpineapple.green"
+copyright = "Copyright © 2023 Sonicpineapple"
+category = "Puzzle Game"
