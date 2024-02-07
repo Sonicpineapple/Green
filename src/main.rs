@@ -177,21 +177,29 @@ impl Diagma for SQ1 {
     }
 
     fn rquot(&self, a: usize, b: usize) -> Option<usize> {
+        let mut q = None;
         for i in 0..self.order() {
             if self.table[i][b] == a {
-                return Some(i);
+                if let Some(_) = q {
+                    return None;
+                }
+                q = Some(i);
             }
         }
-        None
+        q
     }
 
     fn lquot(&self, a: usize, b: usize) -> Option<usize> {
+        let mut q = None;
         for i in 0..self.order() {
             if self.table[a][i] == b {
-                return Some(i);
+                if let Some(_) = q {
+                    return None;
+                }
+                q = Some(i);
             }
         }
-        None
+        q
     }
 
     fn root(&self, a: usize) -> usize {
