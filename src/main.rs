@@ -219,6 +219,26 @@ impl Diagma for SQ1 {
         (a + 1).to_string()
     }
 
+    fn ident(&self) -> Option<usize> {
+        for i in 0..self.order() {
+            if (0..self.order()).fold(true, |acc, n| {
+                acc && self.mul(i, n) == n && self.mul(n, i) == n
+            }) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn init(&self) -> usize {
+        if let Some(m) = self.ident() {
+            if m == 0 {
+                return 1;
+            }
+        }
+        0
+    }
+
     fn modify(&self, a: usize, b: usize) -> Box<dyn Diagma> {
         let mut table = self.table.clone();
         table[a][b] = (table[a][b] + 1) % self.order();
@@ -712,6 +732,40 @@ impl eframe::App for App {
                         ui.end_row();
                         ui.label(" ");
                         ui.label(" ");
+                        for j in 0..self.board.table.order() {
+                            if ui.button("↖").clicked() {
+                                let new_table = self
+                                    .board
+                                    .table
+                                    .col_swap(
+                                        j,
+                                        (j + self.board.table.order() - 1)
+                                            % self.board.table.order(),
+                                    )
+                                    .row_swap(
+                                        j,
+                                        (j + self.board.table.order() - 1)
+                                            % self.board.table.order(),
+                                    );
+                                self.board.set_table(new_table);
+                            }
+                        }
+                        ui.end_row();
+                        ui.label(" ");
+                        ui.label(" ");
+                        for j in 0..self.board.table.order() {
+                            if ui.button("↘").clicked() {
+                                let new_table = self
+                                    .board
+                                    .table
+                                    .col_swap(j, (j + 1) % self.board.table.order())
+                                    .row_swap(j, (j + 1) % self.board.table.order());
+                                self.board.set_table(new_table);
+                            }
+                        }
+                        ui.end_row();
+                        ui.label(" ");
+                        ui.label(" ");
                         if ui.button("T").clicked() {
                             self.board.set_table(self.board.table.trans_all());
                             self.status = ErrorMsg::Ok;
@@ -743,6 +797,25 @@ impl eframe::App for App {
                                     };
                                 }
                             }
+                        }
+                        if ui.button("R").clicked() {
+                            let range =
+                                rand::distributions::Uniform::new(0, self.board.table.order());
+                            let mut rng = thread_rng();
+                            let new_table = (0..self.board.table.order())
+                                .map(|m| {
+                                    (0..self.board.table.order())
+                                        .map(|n| {
+                                            if m == n {
+                                                self.board.table.mul(m, n)
+                                            } else {
+                                                range.sample(&mut rng)
+                                            }
+                                        })
+                                        .collect()
+                                })
+                                .collect();
+                            self.board.set_table(Box::new(SQ1 { table: new_table }));
                         }
                     }
                 });
@@ -802,7 +875,8 @@ impl eframe::App for App {
                         if piece == i {
                             egui::Color32::WHITE
                         } else if self.board.table.order() >= 2 {
-                            spectrum((piece - 1) as f64 / (self.board.table.order() - 2) as f64)
+                            let p = if piece > i { piece - 1 } else { piece };
+                            spectrum((p) as f64 / (self.board.table.order() - 2) as f64)
                         } else {
                             dbg!("Boo");
                             spectrum(0. as f64)
