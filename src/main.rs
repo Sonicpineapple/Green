@@ -427,11 +427,7 @@ impl Board {
     }
 
     fn reset(&mut self) {
-        for row in &mut self.pieces {
-            for piece in row {
-                *piece = self.table.init();
-            }
-        }
+        self.pieces = vec![vec![self.table.init(); self.size]; self.size];
         self.undo_stack = MoveStack::new();
     }
 }
@@ -641,14 +637,24 @@ impl eframe::App for App {
             })
         });
         egui::SidePanel::right("Right").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("-").clicked() {
+                    if self.board.size > 1 {
+                        self.board.size -= 1;
+                    }
+                    self.board.reset();
+                }
+                if ui.button("+").clicked() {
+                    self.board.size += 1;
+                    self.board.reset();
+                }
+            });
             if ui.button("Magma mode").clicked() {
                 self.mmode = !self.mmode;
             };
             if self.mmode {
                 ui.label("Warning: Unsafe");
-            }
-            ui.horizontal(|ui| {
-                if self.mmode {
+                ui.horizontal(|ui| {
                     if ui.button("-").clicked() {
                         let n = (self.board.table.order() - 1).max(2);
                         let new_table = Box::new(SQ1::new_lights_out(n));
@@ -661,8 +667,8 @@ impl eframe::App for App {
                         self.board.table = new_table;
                         self.board.reset();
                     }
-                }
-            });
+                });
+            }
             egui::Grid::new("Table_grid")
                 .min_col_width(0.)
                 .spacing((0.1, 0.1))
