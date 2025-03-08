@@ -460,7 +460,14 @@ impl Board {
 
     fn undo(&mut self) -> Result<(), FailType> {
         if let Some(m) = self.undo_stack.undo() {
-            self.press(m.inv())
+            let res = self.press(m.inv());
+            match res {
+                Err(FailType::NoDiv) => {
+                    self.undo_stack.redo();
+                }
+                _ => {}
+            };
+            res
         } else {
             Err(FailType::UndoEmpty)
         }
@@ -600,19 +607,6 @@ impl eframe::App for App {
             reset(&mut self.board);
         }
 
-        let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Z);
-        let undo = |board: &mut Board| match board.undo() {
-            Ok(_) => ErrorMsg::Ok,
-            Err(e) => match e {
-                FailType::UndoEmpty => ErrorMsg::NoUndo,
-                FailType::NoDiv => ErrorMsg::NoInv,
-                _ => ErrorMsg::Impossible,
-            },
-        };
-        if ctx.input_mut(|input| input.consume_shortcut(&undo_shortcut)) {
-            self.status = undo(&mut self.board);
-        }
-
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
             egui::Key::Z,
@@ -627,6 +621,19 @@ impl eframe::App for App {
         };
         if ctx.input_mut(|input| input.consume_shortcut(&redo_shortcut)) {
             self.status = redo(&mut self.board);
+        }
+
+        let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Z);
+        let undo = |board: &mut Board| match board.undo() {
+            Ok(_) => ErrorMsg::Ok,
+            Err(e) => match e {
+                FailType::UndoEmpty => ErrorMsg::NoUndo,
+                FailType::NoDiv => ErrorMsg::NoInv,
+                _ => ErrorMsg::Impossible,
+            },
+        };
+        if ctx.input_mut(|input| input.consume_shortcut(&undo_shortcut)) {
+            self.status = undo(&mut self.board);
         }
 
         let toggle_num_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::N);
