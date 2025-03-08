@@ -421,8 +421,8 @@ impl Board {
     }
 
     fn random_move(&mut self, rng: &mut ThreadRng) {
-        let x = (rng.gen::<f32>() * self.size as f32).floor() as usize;
-        let y = (rng.gen::<f32>() * self.size as f32).floor() as usize;
+        let x = (rng.random::<f32>() * self.size as f32).floor() as usize;
+        let y = (rng.random::<f32>() * self.size as f32).floor() as usize;
         let _ = self.press(Move::new(x, y));
     }
 
@@ -519,7 +519,7 @@ impl eframe::App for App {
         let scramble_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F);
         let scramble = |board: &mut Board| {
             board.reset();
-            let mut rng = thread_rng();
+            let mut rng = rand::rng();
             for _ in 0..100 {
                 board.random_move(&mut rng);
             }
@@ -807,8 +807,8 @@ impl eframe::App for App {
                         }
                         if ui.button("R").clicked() {
                             let range =
-                                rand::distributions::Uniform::new(0, self.board.table.order());
-                            let mut rng = thread_rng();
+                                rand::distr::Uniform::new(0, self.board.table.order()).unwrap();
+                            let mut rng = rand::rng();
                             let new_table = (0..self.board.table.order())
                                 .map(|m| {
                                     (0..self.board.table.order())
