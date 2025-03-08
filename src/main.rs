@@ -12,11 +12,73 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+enum ModalResponse {
+    Confirm(Board),
+    Close,
+    None,
+}
+struct CreateZnModal {
+    n: usize,
+    m: usize,
+    p: usize,
+}
+impl CreateZnModal {
+    fn new() -> Self {
+        Self { n: 4, m: 4, p: 3 }
+    }
+
+    fn show(&mut self, ctx: &egui::Context) -> ModalResponse {
+        let modal = egui::Modal::new("Custom puzzle".into());
+        modal
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    let mut slider = |label, num, range| {
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::Slider::new(num, range).clamping(egui::SliderClamping::Never),
+                            );
+                            ui.label(label);
+                        });
+                    };
+                    slider("X size", &mut self.n, 1..=16);
+                    slider("Y size", &mut self.m, 1..=16);
+                    slider("Modulo", &mut self.p, 1..=21);
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Create").clicked() {
+                        return ModalResponse::Confirm(Board::new(
+                            self.n,
+                            self.m,
+                            Zn { lim: self.p },
+                        ));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        return ModalResponse::Close;
+                    }
+                    ModalResponse::None
+                })
+                .inner
+            })
+            .inner
+    }
+}
+
+struct Modals {
+    create_zn: Option<CreateZnModal>,
+}
+impl Modals {
+    fn new() -> Self {
+        Self { create_zn: None }
+    }
+}
+
 struct App {
     board: Board,
     show_numbers: bool,
     mmode: bool,
+    show_table: bool,
     status: ErrorMsg,
+    modals: Modals,
 }
 
 impl App {
@@ -26,10 +88,12 @@ impl App {
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
         Self {
-            board: Board::new(4, Zn { lim: 3 }),
+            board: Board::new(4, 4, Zn { lim: 3 }),
             show_numbers: false,
             mmode: false,
+            show_table: true,
             status: ErrorMsg::Ok,
+            modals: Modals::new(),
         }
     }
 }
@@ -58,7 +122,7 @@ trait Diagma: std::fmt::Debug {
         None
     }
 
-    fn modify(&self, a: usize, b: usize) -> Box<dyn Diagma>;
+    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Diagma>;
 
     fn row_swap(&self, a: usize, b: usize) -> Box<dyn Diagma>;
 
@@ -111,9 +175,9 @@ impl Diagma for Zn {
         1
     }
 
-    fn modify(&self, a: usize, b: usize) -> Box<dyn Diagma> {
+    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Diagma> {
         let mut table: Vec<Vec<usize>> = self.table();
-        table[a][b] = (table[a][b] + 1) % self.order();
+        table[a][b] = ((table[a][b] + self.order()) as isize + d) as usize % self.order();
         Box::new(SQ1 { table })
     }
 
@@ -239,9 +303,9 @@ impl Diagma for SQ1 {
         0
     }
 
-    fn modify(&self, a: usize, b: usize) -> Box<dyn Diagma> {
+    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Diagma> {
         let mut table = self.table.clone();
-        table[a][b] = (table[a][b] + 1) % self.order();
+        table[a][b] = ((table[a][b] + self.order()) as isize + d) as usize % self.order();
         Box::new(SQ1 { table })
     }
 
@@ -307,15 +371,15 @@ impl SQ1 {
 struct Board {
     pieces: Vec<Vec<usize>>,
     table: Box<dyn Diagma>,
-    size: usize,
+    size: (usize, usize),
     undo_stack: MoveStack,
 }
 impl Board {
-    fn new(n: usize, table: impl Diagma + 'static) -> Self {
+    fn new(x: usize, y: usize, table: impl Diagma + 'static) -> Self {
         Self {
-            pieces: vec![vec![table.init(); n]; n],
+            pieces: vec![vec![table.init(); x]; y],
             table: Box::new(table),
-            size: n,
+            size: (x, y),
             undo_stack: MoveStack::new(),
         }
     }
@@ -369,6 +433,7 @@ impl Board {
     }
 
     fn press(&mut self, m: Move) -> Result<(), FailType> {
+        let (sizex, sizey) = self.size;
         let Move { x, y, d } = m;
         let val = if d >= 0 {
             self.pieces[y][x]
@@ -377,13 +442,13 @@ impl Board {
         };
         let mut new_pieces = self.pieces.clone();
         self.op(&mut new_pieces, x, y, val, d)?;
-        if y < self.size - 1 {
+        if y < sizey - 1 {
             self.op(&mut new_pieces, x, y + 1, val, d)?;
         }
         if y > 0 {
             self.op(&mut new_pieces, x, y - 1, val, d)?;
         }
-        if x < self.size - 1 {
+        if x < sizex - 1 {
             self.op(&mut new_pieces, x + 1, y, val, d)?;
         }
         if x > 0 {
@@ -421,13 +486,13 @@ impl Board {
     }
 
     fn random_move(&mut self, rng: &mut ThreadRng) {
-        let x = (rng.random::<f32>() * self.size as f32).floor() as usize;
-        let y = (rng.random::<f32>() * self.size as f32).floor() as usize;
+        let x = (rng.random::<f32>() * self.size.0 as f32).floor() as usize;
+        let y = (rng.random::<f32>() * self.size.1 as f32).floor() as usize;
         let _ = self.press(Move::new(x, y));
     }
 
     fn reset(&mut self) {
-        self.pieces = vec![vec![self.table.init(); self.size]; self.size];
+        self.pieces = vec![vec![self.table.init(); self.size.0]; self.size.1];
         self.undo_stack = MoveStack::new();
     }
 }
@@ -520,7 +585,8 @@ impl eframe::App for App {
         let scramble = |board: &mut Board| {
             board.reset();
             let mut rng = rand::rng();
-            for _ in 0..100 {
+            let length = board.size.0 * board.size.1 * board.table.order();
+            for _ in 0..length {
                 board.random_move(&mut rng);
             }
         };
@@ -606,6 +672,7 @@ impl eframe::App for App {
                     if ui.button("Test").clicked() {
                         self.board = Board::new(
                             4,
+                            4,
                             SQ1 {
                                 table: vec![vec![1, 0, 2], vec![0, 2, 1], vec![2, 1, 0]],
                             },
@@ -621,10 +688,15 @@ impl eframe::App for App {
                                 .button("".to_string() + &n_str + "x" + &n_str + ", " + &lim_str)
                                 .clicked()
                             {
-                                self.board = Board::new(n, Zn { lim });
+                                self.board = Board::new(n, n, Zn { lim });
                                 ui.close_menu();
                             }
                         }
+                    }
+
+                    if ui.button("Custom...").clicked() {
+                        self.modals.create_zn = Some(CreateZnModal::new());
+                        ui.close_menu();
                     }
                 });
                 ui.menu_button("Options", |ui| {
@@ -638,20 +710,43 @@ impl eframe::App for App {
         });
         egui::SidePanel::right("Right").show(ctx, |ui| {
             ui.horizontal(|ui| {
+                ui.label("X");
                 if ui.button("-").clicked() {
-                    if self.board.size > 1 {
-                        self.board.size -= 1;
+                    if self.board.size.0 > 1 {
+                        self.board.size.0 -= 1;
                     }
                     self.board.reset();
                 }
                 if ui.button("+").clicked() {
-                    self.board.size += 1;
+                    self.board.size.0 += 1;
                     self.board.reset();
                 }
             });
-            if ui.button("Magma mode").clicked() {
-                self.mmode = !self.mmode;
-            };
+            ui.horizontal(|ui| {
+                ui.label("Y");
+                if ui.button("-").clicked() {
+                    if self.board.size.1 > 1 {
+                        self.board.size.1 -= 1;
+                    }
+                    self.board.reset();
+                }
+                if ui.button("+").clicked() {
+                    self.board.size.1 += 1;
+                    self.board.reset();
+                }
+            });
+            ui.horizontal(|ui| {
+                if ui.button("Magma mode").clicked() {
+                    self.mmode = !self.mmode;
+                };
+                let label = match self.show_table {
+                    true => "Hide table",
+                    false => "Show table",
+                };
+                if ui.button(label).clicked() {
+                    self.show_table = !self.show_table;
+                }
+            });
             if self.mmode {
                 ui.label("Warning: Unsafe");
                 ui.horizontal(|ui| {
@@ -669,163 +764,169 @@ impl eframe::App for App {
                     }
                 });
             }
-            egui::Grid::new("Table_grid")
-                .min_col_width(0.)
-                .spacing((0.1, 0.1))
-                .show(ui, |ui| {
-                    if self.mmode {}
-                    ui.label("*");
-                    ui.label(" ");
-                    for i in 0..self.board.table.order() {
-                        ui.label(self.board.table.rep(i));
-                    }
-                    ui.end_row();
-                    for i in 0..self.board.table.order() {
-                        ui.label(self.board.table.rep(i));
+            if self.show_table {
+                egui::Grid::new("Table_grid")
+                    .min_col_width(0.)
+                    .spacing((0.1, 0.1))
+                    .show(ui, |ui| {
+                        if self.mmode {}
+                        ui.label("*");
                         ui.label(" ");
-                        for j in 0..self.board.table.order() {
-                            if ui
-                                .button(self.board.table.rep(self.board.table.mul(i, j)))
-                                .clicked()
-                                && self.mmode
-                            {
-                                // TODO: right click decrement?
-                                let new_table = self.board.table.modify(i, j);
-                                self.board.set_table(new_table);
-                            };
-                        }
-                        if self.mmode {
-                            if ui.button("⬇").clicked() {
-                                let new_table = self
-                                    .board
-                                    .table
-                                    .row_swap(i, (i + 1) % self.board.table.order());
-                                self.board.set_table(new_table)
-                            }
-                            if ui.button("⬆").clicked() {
-                                let new_table = self.board.table.row_swap(
-                                    i,
-                                    (i + self.board.table.order() - 1) % self.board.table.order(),
-                                );
-                                self.board.set_table(new_table);
-                            }
+                        for i in 0..self.board.table.order() {
+                            ui.label(self.board.table.rep(i));
                         }
                         ui.end_row();
-                    }
-                    ui.label(" ");
-                    ui.label(" ");
-                    if self.mmode {
-                        for j in 0..self.board.table.order() {
-                            if ui.button("➡").clicked() {
-                                let new_table = self
-                                    .board
-                                    .table
-                                    .col_swap(j, (j + 1) % self.board.table.order());
-                                self.board.set_table(new_table)
+                        for i in 0..self.board.table.order() {
+                            ui.label(self.board.table.rep(i));
+                            ui.label(" ");
+                            for j in 0..self.board.table.order() {
+                                let button =
+                                    ui.button(self.board.table.rep(self.board.table.mul(i, j)));
+                                if self.mmode {
+                                    if button.clicked_by(egui::PointerButton::Primary) {
+                                        let new_table = self.board.table.modify(i, j, 1);
+                                        self.board.set_table(new_table);
+                                    } else if button.clicked_by(egui::PointerButton::Secondary) {
+                                        let new_table = self.board.table.modify(i, j, -1);
+                                        self.board.set_table(new_table);
+                                    };
+                                }
                             }
-                        }
-                        ui.end_row();
-                        ui.label(" ");
-                        ui.label(" ");
-                        for j in 0..self.board.table.order() {
-                            if ui.button("⬅").clicked() {
-                                let new_table = self.board.table.col_swap(
-                                    j,
-                                    (j + self.board.table.order() - 1) % self.board.table.order(),
-                                );
-                                self.board.set_table(new_table);
-                            }
-                        }
-                        ui.end_row();
-                        ui.label(" ");
-                        ui.label(" ");
-                        for j in 0..self.board.table.order() {
-                            if ui.button("↖").clicked() {
-                                let new_table = self
-                                    .board
-                                    .table
-                                    .col_swap(
-                                        j,
-                                        (j + self.board.table.order() - 1)
+                            if self.mmode {
+                                if ui.button("⬇").clicked() {
+                                    let new_table = self
+                                        .board
+                                        .table
+                                        .row_swap(i, (i + 1) % self.board.table.order());
+                                    self.board.set_table(new_table)
+                                }
+                                if ui.button("⬆").clicked() {
+                                    let new_table = self.board.table.row_swap(
+                                        i,
+                                        (i + self.board.table.order() - 1)
                                             % self.board.table.order(),
-                                    )
-                                    .row_swap(
+                                    );
+                                    self.board.set_table(new_table);
+                                }
+                            }
+                            ui.end_row();
+                        }
+                        ui.label(" ");
+                        ui.label(" ");
+                        if self.mmode {
+                            for j in 0..self.board.table.order() {
+                                if ui.button("➡").clicked() {
+                                    let new_table = self
+                                        .board
+                                        .table
+                                        .col_swap(j, (j + 1) % self.board.table.order());
+                                    self.board.set_table(new_table)
+                                }
+                            }
+                            ui.end_row();
+                            ui.label(" ");
+                            ui.label(" ");
+                            for j in 0..self.board.table.order() {
+                                if ui.button("⬅").clicked() {
+                                    let new_table = self.board.table.col_swap(
                                         j,
                                         (j + self.board.table.order() - 1)
                                             % self.board.table.order(),
                                     );
-                                self.board.set_table(new_table);
-                            }
-                        }
-                        ui.end_row();
-                        ui.label(" ");
-                        ui.label(" ");
-                        for j in 0..self.board.table.order() {
-                            if ui.button("↘").clicked() {
-                                let new_table = self
-                                    .board
-                                    .table
-                                    .col_swap(j, (j + 1) % self.board.table.order())
-                                    .row_swap(j, (j + 1) % self.board.table.order());
-                                self.board.set_table(new_table);
-                            }
-                        }
-                        ui.end_row();
-                        ui.label(" ");
-                        ui.label(" ");
-                        if ui.button("T").clicked() {
-                            self.board.set_table(self.board.table.trans_all());
-                            self.status = ErrorMsg::Ok;
-                        }
-                        if ui.button("/").clicked() {
-                            match self.board.table.rquot_all() {
-                                Ok(table) => {
-                                    self.board.set_table(table);
-                                    self.status = ErrorMsg::Ok;
-                                }
-                                Err(e) => {
-                                    self.status = match e {
-                                        FailType::NoDiv => ErrorMsg::NoRDiv,
-                                        _ => ErrorMsg::Impossible,
-                                    };
+                                    self.board.set_table(new_table);
                                 }
                             }
-                        }
-                        if ui.button("\\").clicked() {
-                            match self.board.table.lquot_all() {
-                                Ok(table) => {
-                                    self.board.set_table(table);
-                                    self.status = ErrorMsg::Ok;
-                                }
-                                Err(e) => {
-                                    self.status = match e {
-                                        FailType::NoDiv => ErrorMsg::NoLDiv,
-                                        _ => ErrorMsg::Ok,
-                                    };
+                            ui.end_row();
+                            ui.label(" ");
+                            ui.label(" ");
+                            for j in 0..self.board.table.order() {
+                                if ui.button("↖").clicked() {
+                                    let new_table = self
+                                        .board
+                                        .table
+                                        .col_swap(
+                                            j,
+                                            (j + self.board.table.order() - 1)
+                                                % self.board.table.order(),
+                                        )
+                                        .row_swap(
+                                            j,
+                                            (j + self.board.table.order() - 1)
+                                                % self.board.table.order(),
+                                        );
+                                    self.board.set_table(new_table);
                                 }
                             }
+                            ui.end_row();
+                            ui.label(" ");
+                            ui.label(" ");
+                            for j in 0..self.board.table.order() {
+                                if ui.button("↘").clicked() {
+                                    let new_table = self
+                                        .board
+                                        .table
+                                        .col_swap(j, (j + 1) % self.board.table.order())
+                                        .row_swap(j, (j + 1) % self.board.table.order());
+                                    self.board.set_table(new_table);
+                                }
+                            }
+                            ui.end_row();
+                            ui.label(" ");
+                            ui.label(" ");
+                            if ui.button("T").clicked() {
+                                self.board.set_table(self.board.table.trans_all());
+                                self.status = ErrorMsg::Ok;
+                            }
+                            if ui.button("/").clicked() {
+                                match self.board.table.rquot_all() {
+                                    Ok(table) => {
+                                        self.board.set_table(table);
+                                        self.status = ErrorMsg::Ok;
+                                    }
+                                    Err(e) => {
+                                        self.status = match e {
+                                            FailType::NoDiv => ErrorMsg::NoRDiv,
+                                            _ => ErrorMsg::Impossible,
+                                        };
+                                    }
+                                }
+                            }
+                            if ui.button("\\").clicked() {
+                                match self.board.table.lquot_all() {
+                                    Ok(table) => {
+                                        self.board.set_table(table);
+                                        self.status = ErrorMsg::Ok;
+                                    }
+                                    Err(e) => {
+                                        self.status = match e {
+                                            FailType::NoDiv => ErrorMsg::NoLDiv,
+                                            _ => ErrorMsg::Ok,
+                                        };
+                                    }
+                                }
+                            }
+                            if ui.button("R").clicked() {
+                                let range =
+                                    rand::distr::Uniform::new(0, self.board.table.order()).unwrap();
+                                let mut rng = rand::rng();
+                                let new_table = (0..self.board.table.order())
+                                    .map(|m| {
+                                        (0..self.board.table.order())
+                                            .map(|n| {
+                                                if m == n {
+                                                    self.board.table.mul(m, n)
+                                                } else {
+                                                    range.sample(&mut rng)
+                                                }
+                                            })
+                                            .collect()
+                                    })
+                                    .collect();
+                                self.board.set_table(Box::new(SQ1 { table: new_table }));
+                            }
                         }
-                        if ui.button("R").clicked() {
-                            let range =
-                                rand::distr::Uniform::new(0, self.board.table.order()).unwrap();
-                            let mut rng = rand::rng();
-                            let new_table = (0..self.board.table.order())
-                                .map(|m| {
-                                    (0..self.board.table.order())
-                                        .map(|n| {
-                                            if m == n {
-                                                self.board.table.mul(m, n)
-                                            } else {
-                                                range.sample(&mut rng)
-                                            }
-                                        })
-                                        .collect()
-                                })
-                                .collect();
-                            self.board.set_table(Box::new(SQ1 { table: new_table }));
-                        }
-                    }
-                });
+                    });
+            }
             ui.label(match self.status {
                 ErrorMsg::Ok => "",
                 ErrorMsg::NoUndo => "Nothing to undo",
@@ -837,9 +938,23 @@ impl eframe::App for App {
             });
         });
         egui::CentralPanel::default().show(ctx, |ui| {
+            if let Some(modal) = &mut self.modals.create_zn {
+                match modal.show(ctx) {
+                    ModalResponse::Confirm(board) => {
+                        self.board = board;
+                        self.modals.create_zn = None;
+                    }
+                    ModalResponse::Close => self.modals.create_zn = None,
+                    ModalResponse::None => {}
+                }
+            }
+
             let rect = ui.available_rect_before_wrap();
             let (min, size) = (rect.left_top(), rect.size());
-            let unit = size / self.board.size as f32;
+            let unit = egui::vec2(
+                size.x / self.board.size.0 as f32,
+                size.y / self.board.size.1 as f32,
+            );
             let font_size = (32. as f32).min(unit.y * 2. / 3.);
 
             // Handling mouse input
