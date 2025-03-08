@@ -8,7 +8,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Green the Board",
         native_options,
-        Box::new(|cc| Box::new(App::new(cc))),
+        Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
 }
 
@@ -689,6 +689,7 @@ impl eframe::App for App {
                                 .clicked()
                                 && self.mmode
                             {
+                                // TODO: right click decrement?
                                 let new_table = self.board.table.modify(i, j);
                                 self.board.set_table(new_table);
                             };
@@ -875,6 +876,7 @@ impl eframe::App for App {
             }
 
             // Drawing the board
+            ui.style_mut().interaction.selectable_labels = false;
             for (j, row) in self.board.pieces.iter().enumerate() {
                 for (i, &piece) in row.iter().enumerate() {
                     let col = if let Some(i) = self.board.table.ident() {
@@ -895,9 +897,10 @@ impl eframe::App for App {
                             min + egui::vec2(i as f32 * unit.x, j as f32 * unit.y),
                             unit,
                         ),
-                        egui::Rounding::none(),
+                        egui::CornerRadius::ZERO,
                         col,
                         (5.0, egui::Color32::DARK_GRAY),
+                        egui::StrokeKind::Middle,
                     );
                     if self.show_numbers {
                         ui.put(

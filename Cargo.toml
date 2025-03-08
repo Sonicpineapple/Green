@@ -8,8 +8,7 @@ description = "Lights-out-esque puzzle using modular arithmetic"
 
 [dependencies]
 colorous = "1.0.10"
-eframe = "0.21.3"
-egui = "0.21.0"
+eframe = "0.31.1"
 rand = "0.8.5"
 
 [package.metadata.bundle]
