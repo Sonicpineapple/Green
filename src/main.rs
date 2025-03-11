@@ -98,15 +98,14 @@ impl App {
     }
 }
 
-/// Diagonal Magma: Each element has a unique square root
-trait Diagma: std::fmt::Debug {
+trait Magma: std::fmt::Debug {
     fn mul(&self, a: usize, b: usize) -> usize;
 
     fn rquot(&self, a: usize, b: usize) -> Option<usize>;
 
     fn lquot(&self, a: usize, b: usize) -> Option<usize>;
 
-    fn root(&self, a: usize) -> usize;
+    fn root(&self, a: usize) -> Option<usize>;
 
     fn rep(&self, a: usize) -> String {
         a.to_string()
@@ -122,17 +121,17 @@ trait Diagma: std::fmt::Debug {
         None
     }
 
-    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Diagma>;
+    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Magma>;
 
-    fn row_swap(&self, a: usize, b: usize) -> Box<dyn Diagma>;
+    fn row_swap(&self, a: usize, b: usize) -> Box<dyn Magma>;
 
-    fn col_swap(&self, a: usize, b: usize) -> Box<dyn Diagma>;
+    fn col_swap(&self, a: usize, b: usize) -> Box<dyn Magma>;
 
-    fn trans_all(&self) -> Box<dyn Diagma>;
+    fn trans_all(&self) -> Box<dyn Magma>;
 
-    fn rquot_all(&self) -> Result<Box<dyn Diagma>, FailType>;
+    fn rquot_all(&self) -> Result<Box<dyn Magma>, FailType>;
 
-    fn lquot_all(&self) -> Result<Box<dyn Diagma>, FailType>;
+    fn lquot_all(&self) -> Result<Box<dyn Magma>, FailType>;
 }
 
 #[derive(Debug, Clone)]
@@ -146,7 +145,7 @@ impl Zn {
             .collect()
     }
 }
-impl Diagma for Zn {
+impl Magma for Zn {
     fn mul(&self, a: usize, b: usize) -> usize {
         (a + b) % self.lim
     }
@@ -159,8 +158,9 @@ impl Diagma for Zn {
         self.rquot(b, a)
     }
 
-    fn root(&self, a: usize) -> usize {
-        (a * (self.lim + 1) / 2) % self.lim
+    fn root(&self, a: usize) -> Option<usize> {
+        let n = a * (self.lim + 1);
+        (n % 2 == 0).then_some((n / 2) % self.lim)
     }
 
     fn order(&self) -> usize {
@@ -175,19 +175,19 @@ impl Diagma for Zn {
         1
     }
 
-    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Diagma> {
+    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Magma> {
         let mut table: Vec<Vec<usize>> = self.table();
         table[a][b] = ((table[a][b] + self.order()) as isize + d) as usize % self.order();
         Box::new(SQ1 { table })
     }
 
-    fn row_swap(&self, a: usize, b: usize) -> Box<dyn Diagma> {
+    fn row_swap(&self, a: usize, b: usize) -> Box<dyn Magma> {
         let mut table = self.table();
         table.swap(a, b);
         Box::new(SQ1 { table })
     }
 
-    fn col_swap(&self, a: usize, b: usize) -> Box<dyn Diagma> {
+    fn col_swap(&self, a: usize, b: usize) -> Box<dyn Magma> {
         let mut table = self.table();
         for col in &mut table {
             col.swap(a, b);
@@ -195,14 +195,14 @@ impl Diagma for Zn {
         Box::new(SQ1 { table })
     }
 
-    fn trans_all(&self) -> Box<dyn Diagma> {
+    fn trans_all(&self) -> Box<dyn Magma> {
         let table = (0..self.order())
             .map(|n| (0..self.order()).map(|m| self.mul(m, n)).collect())
             .collect();
         Box::new(SQ1 { table })
     }
 
-    fn rquot_all(&self) -> Result<Box<dyn Diagma>, FailType> {
+    fn rquot_all(&self) -> Result<Box<dyn Magma>, FailType> {
         let mut table = self.table();
         for x in 0..self.order() {
             for y in 0..self.order() {
@@ -216,7 +216,7 @@ impl Diagma for Zn {
         Ok(Box::new(SQ1 { table }))
     }
 
-    fn lquot_all(&self) -> Result<Box<dyn Diagma>, FailType> {
+    fn lquot_all(&self) -> Result<Box<dyn Magma>, FailType> {
         let mut table = self.table();
         for x in 0..self.order() {
             for y in 0..self.order() {
@@ -235,7 +235,7 @@ impl Diagma for Zn {
 struct SQ1 {
     table: Vec<Vec<usize>>,
 }
-impl Diagma for SQ1 {
+impl Magma for SQ1 {
     fn mul(&self, a: usize, b: usize) -> usize {
         self.table[a][b]
     }
@@ -266,13 +266,13 @@ impl Diagma for SQ1 {
         q
     }
 
-    fn root(&self, a: usize) -> usize {
+    fn root(&self, a: usize) -> Option<usize> {
         for i in 0..self.order() {
             if self.table[i][i] == a {
-                return i;
+                return Some(i);
             }
         }
-        todo!()
+        None
     }
 
     fn order(&self) -> usize {
@@ -303,19 +303,19 @@ impl Diagma for SQ1 {
         0
     }
 
-    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Diagma> {
+    fn modify(&self, a: usize, b: usize, d: isize) -> Box<dyn Magma> {
         let mut table = self.table.clone();
         table[a][b] = ((table[a][b] + self.order()) as isize + d) as usize % self.order();
         Box::new(SQ1 { table })
     }
 
-    fn row_swap(&self, a: usize, b: usize) -> Box<dyn Diagma> {
+    fn row_swap(&self, a: usize, b: usize) -> Box<dyn Magma> {
         let mut table = self.table.clone();
         table.swap(a, b);
         Box::new(SQ1 { table })
     }
 
-    fn col_swap(&self, a: usize, b: usize) -> Box<dyn Diagma> {
+    fn col_swap(&self, a: usize, b: usize) -> Box<dyn Magma> {
         let mut table = self.table.clone();
         for col in &mut table {
             col.swap(a, b);
@@ -323,14 +323,14 @@ impl Diagma for SQ1 {
         Box::new(SQ1 { table })
     }
 
-    fn trans_all(&self) -> Box<dyn Diagma> {
+    fn trans_all(&self) -> Box<dyn Magma> {
         let table = (0..self.order())
             .map(|n| (0..self.order()).map(|m| self.mul(m, n)).collect())
             .collect();
         Box::new(SQ1 { table })
     }
 
-    fn rquot_all(&self) -> Result<Box<dyn Diagma>, FailType> {
+    fn rquot_all(&self) -> Result<Box<dyn Magma>, FailType> {
         let mut table = self.table.clone();
         for x in 0..self.order() {
             for y in 0..self.order() {
@@ -344,7 +344,7 @@ impl Diagma for SQ1 {
         Ok(Box::new(SQ1 { table }))
     }
 
-    fn lquot_all(&self) -> Result<Box<dyn Diagma>, FailType> {
+    fn lquot_all(&self) -> Result<Box<dyn Magma>, FailType> {
         let mut table = self.table.clone();
         for x in 0..self.order() {
             for y in 0..self.order() {
@@ -370,12 +370,12 @@ impl SQ1 {
 #[derive(Debug)]
 struct Board {
     pieces: Vec<Vec<usize>>,
-    table: Box<dyn Diagma>,
+    table: Box<dyn Magma>,
     size: (usize, usize),
     undo_stack: MoveStack,
 }
 impl Board {
-    fn new(x: usize, y: usize, table: impl Diagma + 'static) -> Self {
+    fn new(x: usize, y: usize, table: impl Magma + 'static) -> Self {
         Self {
             pieces: vec![vec![table.init(); x]; y],
             table: Box::new(table),
@@ -384,7 +384,7 @@ impl Board {
         }
     }
 
-    fn set_table(&mut self, table: Box<dyn Diagma>) {
+    fn set_table(&mut self, table: Box<dyn Magma>) {
         self.table = table;
         self.reset();
     }
@@ -438,7 +438,10 @@ impl Board {
         let val = if d >= 0 {
             self.pieces[y][x]
         } else {
-            self.table.root(self.pieces[y][x])
+            match self.table.root(self.pieces[y][x]) {
+                Some(r) => r,
+                None => return Err(FailType::NoRoot),
+            }
         };
         let mut new_pieces = self.pieces.clone();
         self.op(&mut new_pieces, x, y, val, d)?;
@@ -508,6 +511,7 @@ enum FailType {
     UndoEmpty,
     RedoEmpty,
     NoDiv,
+    NoRoot,
 }
 
 enum ErrorMsg {
@@ -965,35 +969,30 @@ impl eframe::App for App {
             let font_size = (32. as f32).min(unit.y * 2. / 3.);
 
             // Handling mouse input
-            if ui.input(|input| input.pointer.primary_pressed()) {
-                if ui.ui_contains_pointer() {
-                    if let Some(mpos) = ctx.pointer_latest_pos() {
-                        let pos = ((mpos - min) / unit).to_pos2();
-                        self.status = match self
-                            .board
-                            .apply_move(Move::new(pos.x.trunc() as usize, pos.y.trunc() as usize))
-                        {
-                            Ok(_) => ErrorMsg::Ok,
-                            Err(e) => match e {
-                                _ => ErrorMsg::Impossible,
-                            },
-                        };
-                    }
-                }
-            } else if ui.input(|input| input.pointer.secondary_pressed()) {
-                if ui.ui_contains_pointer() {
-                    if let Some(mpos) = ctx.pointer_latest_pos() {
-                        let pos = ((mpos - min) / unit).to_pos2();
-                        self.status = match self.board.apply_move(
-                            Move::new(pos.x.trunc() as usize, pos.y.trunc() as usize).inv(),
-                        ) {
-                            Ok(_) => ErrorMsg::Ok,
-                            Err(e) => match e {
-                                FailType::NoDiv => ErrorMsg::NoInv,
-                                _ => ErrorMsg::Impossible,
-                            },
-                        };
-                    }
+            let r = ui.interact(rect, "Board".into(), egui::Sense::click());
+            if let Some(mpos) = r.interact_pointer_pos() {
+                let pos = ((mpos - min) / unit).to_pos2();
+                if r.clicked() {
+                    self.status = match self
+                        .board
+                        .apply_move(Move::new(pos.x.trunc() as usize, pos.y.trunc() as usize))
+                    {
+                        Ok(_) => ErrorMsg::Ok,
+                        Err(e) => match e {
+                            _ => ErrorMsg::Impossible,
+                        },
+                    };
+                } else if r.secondary_clicked() {
+                    self.status = match self
+                        .board
+                        .apply_move(Move::new(pos.x.trunc() as usize, pos.y.trunc() as usize).inv())
+                    {
+                        Ok(_) => ErrorMsg::Ok,
+                        Err(e) => match e {
+                            FailType::NoDiv | FailType::NoRoot => ErrorMsg::NoInv,
+                            _ => ErrorMsg::Impossible,
+                        },
+                    };
                 }
             }
 
